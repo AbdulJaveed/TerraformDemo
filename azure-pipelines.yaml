@@ -1,0 +1,70 @@
+trigger:
+- main
+
+pool:
+  name: 'Demo'  # Specify your self-hosted agent pool name
+
+variables:
+  terraformPath: 'C:\terraform'  # Common directory for Terraform binary
+  planFileName: 'tfplan'
+  planFilePath: '$(Pipeline.Workspace)\$(planFileName)'
+
+stages:
+- stage: TerraformSetup
+  displayName: 'Terraform Setup'
+  jobs:
+  - job: Terraform
+    displayName: 'Initialize, Plan, and Apply Terraform'
+    steps:
+    - powershell: |
+        # Define Terraform executable path
+        $terraformExe = "$(terraformPath)\terraform.exe"
+        Write-Host "Terraform executable path: $terraformExe"
+
+        # Verify Terraform binary exists before running
+        if (-not (Test-Path $terraformExe)) {
+          Write-Error "Terraform executable not found at $terraformExe"
+          exit 1
+        }
+
+        # Initialize Terraform
+        Write-Host "Initializing Terraform..."
+        & $terraformExe init -reconfigure
+      workingDirectory: 'terraform'
+      displayName: 'Initialize Terraform'
+    
+    - powershell: |
+        # Generate Terraform plan
+        $terraformExe = "$(terraformPath)\terraform.exe"
+        $planFileName = 'tfplan'
+        $planFilePath = "$(Pipeline.Workspace)\$planFileName"
+        Write-Host "Generating Terraform plan and saving to: $planFilePath"
+        & $terraformExe plan -out=tfplan
+
+        # Move the plan file to a common path
+        Move-Item -Path $planFileName -Destination $planFilePath -Force
+
+        # Verify the plan file exists
+        if (-not (Test-Path $planFilePath)) {
+          Write-Error "Plan file not found at $planFilePath"
+          exit 1
+        }
+      workingDirectory: 'terraform'
+      displayName: 'Generate and Move Terraform Plan'
+
+    - powershell: |
+        # Check if the plan file exists before applying
+        $planFilePath = "$(Pipeline.Workspace)\tfplan"
+        if (-not (Test-Path $planFilePath)) {
+          Write-Error "Plan file not found before applying"
+          exit 1
+        }
+
+        # Define Terraform executable path
+        $terraformExe = "$(terraformPath)\terraform.exe"
+        Write-Host "Applying Terraform plan from file: $planFilePath"
+
+        # Apply Terraform plan
+        & $terraformExe apply -auto-approve $planFilePath
+      workingDirectory: 'terraform'
+      displayName: 'Apply Terraform Plan'
