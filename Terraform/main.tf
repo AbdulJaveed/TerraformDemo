@@ -1,4 +1,3 @@
-# main.tf
 resource "azurerm_resource_group" "myrg" {
   name     = "myrg-resources"
   location = var.location
@@ -30,6 +29,7 @@ resource "azurerm_network_interface" "mynic" {
   }
 }
 
+// Uncomment the VM resource if needed
 // resource "azurerm_linux_virtual_machine" "myvm" {
 //   name                = "myvm"
 //   resource_group_name = azurerm_resource_group.myrg.name
@@ -40,16 +40,14 @@ resource "azurerm_network_interface" "mynic" {
 //     azurerm_network_interface.mynic.id,
 //   ]
 
-//   # Set disable_password_authentication to false
 //   disable_password_authentication = false
-
 //   admin_password = "P@ssw0rd1234!" # This is for testing; use a secure method in production
 
 //   os_disk {
 //     caching              = "ReadWrite"
 //     storage_account_type = "Standard_LRS"
 //   }
-//   #source_image_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/my-image-rg/providers/Microsoft.Compute/images/Ubuntu2004LTS"
+
 //   source_image_reference {
 //     publisher = "Canonical"
 //     offer     = "UbuntuServer"
@@ -61,3 +59,34 @@ resource "azurerm_network_interface" "mynic" {
 //     environment = "Testing"
 //   }
 // }
+
+resource "azurerm_kubernetes_cluster" "myaks" {
+  name                = "myaks-cluster"
+  location            = azurerm_resource_group.myrg.location
+  resource_group_name = azurerm_resource_group.myrg.name
+  dns_prefix          = "myaks"
+  sku_tier            = "Free"
+
+  default_node_pool {
+    name       = "default"
+    node_count = var.node_count
+    vm_size    = var.vm_size
+    os_disk_size_gb = var.os_disk_size_gb
+    vnet_subnet_id = azurerm_subnet.mysnet.id
+  }
+
+  network_profile {
+    network_plugin = "kubenet"  # Specify the network plugin (kubenet or azure)
+    service_cidr = "10.1.0.0/16"  # Updated to avoid overlap
+    dns_service_ip = "10.1.0.10"  # Should be within the new service CIDR
+    docker_bridge_cidr = "172.17.0.1/16"  # Default is typically fine, adjust if needed
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = {
+    environment = "Production"
+  }
+}
