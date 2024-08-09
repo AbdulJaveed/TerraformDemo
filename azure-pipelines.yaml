@@ -1,70 +1,92 @@
 trigger:
-- main
+- none
 
 pool:
-  name: 'Demo'  # Specify your self-hosted agent pool name
+  name: 'Demo'
 
 variables:
-  terraformPath: 'C:\terraform'  # Common directory for Terraform binary
+  terraformPath: 'C:\terraform'
   planFileName: 'tfplan'
   planFilePath: '$(Pipeline.Workspace)\$(planFileName)'
 
 stages:
-- stage: TerraformSetup
-  displayName: 'Terraform Setup'
+- stage: TerraformInit
+  displayName: 'Terraform Init'
   jobs:
-  - job: Terraform
-    displayName: 'Initialize, Plan, and Apply Terraform'
+  - job: TerraformInit
+    displayName: 'Initialize Terraform'
     steps:
     - powershell: |
-        # Define Terraform executable path
         $terraformExe = "$(terraformPath)\terraform.exe"
         Write-Host "Terraform executable path: $terraformExe"
-
-        # Verify Terraform binary exists before running
         if (-not (Test-Path $terraformExe)) {
           Write-Error "Terraform executable not found at $terraformExe"
           exit 1
         }
-
-        # Initialize Terraform
         Write-Host "Initializing Terraform..."
         & $terraformExe init -reconfigure
       workingDirectory: 'terraform'
       displayName: 'Initialize Terraform'
-    
+
+- stage: TerraformPlan
+  displayName: 'Terraform Plan'
+  dependsOn: TerraformInit
+  jobs:
+  - job: TerraformPlan
+    displayName: 'Plan Terraform'
+    steps:
+    - checkout: none
     - powershell: |
-        # Generate Terraform plan
         $terraformExe = "$(terraformPath)\terraform.exe"
-        $planFileName = 'tfplan'
-        $planFilePath = "$(Pipeline.Workspace)\$planFileName"
+        $planFilePath = "$(Pipeline.Workspace)\$(planFileName)"
         Write-Host "Generating Terraform plan and saving to: $planFilePath"
-        & $terraformExe plan -out=tfplan
-
-        # Move the plan file to a common path
-        Move-Item -Path $planFileName -Destination $planFilePath -Force
-
-        # Verify the plan file exists
+        & $terraformExe plan -out="$(Pipeline.Workspace)\$(planFileName)"
         if (-not (Test-Path $planFilePath)) {
           Write-Error "Plan file not found at $planFilePath"
           exit 1
         }
       workingDirectory: 'terraform'
-      displayName: 'Generate and Move Terraform Plan'
+      displayName: 'Generate Terraform Plan'
 
-    - powershell: |
-        # Check if the plan file exists before applying
-        $planFilePath = "$(Pipeline.Workspace)\tfplan"
-        if (-not (Test-Path $planFilePath)) {
-          Write-Error "Plan file not found before applying"
-          exit 1
-        }
+- stage: TerraformApply
+  displayName: 'Terraform Apply'
+  dependsOn: TerraformPlan
+  jobs:
+  - deployment: Apply
+    displayName: 'Apply Terraform Plan'
+    environment: 'test'  # Reference the environment to enforce manual approval
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: none
+          - powershell: |
+              $planFilePath = "$(Pipeline.Workspace)\$(planFileName)"
+              if (-not (Test-Path $planFilePath)) {
+                Write-Error "Plan file not found before applying"
+                exit 1
+              }
+              $terraformExe = "$(terraformPath)\terraform.exe"
+              Write-Host "Applying Terraform plan from file: $planFilePath"
+              & $terraformExe apply -auto-approve $planFilePath
+            workingDirectory: 'terraform'
+            displayName: 'Apply Terraform Plan'
 
-        # Define Terraform executable path
-        $terraformExe = "$(terraformPath)\terraform.exe"
-        Write-Host "Applying Terraform plan from file: $planFilePath"
-
-        # Apply Terraform plan
-        & $terraformExe apply -auto-approve $planFilePath
-      workingDirectory: 'terraform'
-      displayName: 'Apply Terraform Plan'
+- stage: TerraformDestroy
+  displayName: 'Terraform Destroy'
+  dependsOn: TerraformPlan
+  jobs:
+  - deployment: Destroy
+    displayName: 'Destroy Terraform Resources'
+    environment: 'test'  # Reference the environment to enforce manual approval
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - checkout: none
+          - powershell: |
+              $terraformExe = "$(terraformPath)\terraform.exe"
+              Write-Host "Destroying Terraform resources..."
+              & $terraformExe destroy -auto-approve
+            workingDirectory: 'terraform'
+            displayName: 'Destroy Terraform Resources'
