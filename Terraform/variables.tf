@@ -1,19 +1,23 @@
-# variables.tf
 variable "location" {
   description = "The Azure region to deploy resources."
   type        = string
-  default     = "East US"
+  default     = "East US"  # You can change this if needed
+}
+
+variable "node_count" {
+  description = "The number of nodes in the Kubernetes cluster."
+  type        = number
+  default     = 1
 }
 
 variable "vm_size" {
-  description = "The size of the virtual machine."
+  description = "The VM size for the nodes."
   type        = string
-  default     = "Standard_DS1_v2"
+  default     = "Standard_G1"  # Updated VM size
 }
 
-variable "admin_username" {
-  description = "The admin username for the VM."
-  type        = string
-  sensitive   = true
-  default     = "adminuser"
+variable "os_disk_size_gb" {
+  description = "The size of the OS disk in GB."
+  type        = number
+  default     = 100
 }
